@@ -1,232 +1,231 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { Box, Button, Grid, Modal, Stack, TextField, Typography, IconButton, Avatar } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { DataGrid } from '@mui/x-data-grid';
+import { Pie, Bar } from 'react-chartjs-2';
 import { firestore } from '@/firebase';
-import {
-  Box,
-  Modal,
-  Stack,
-  TextField,
-  Button,
-  Typography,
-  CircularProgress,
-  Snackbar,
-  Alert
-} from '@mui/material';
-import { query, collection, getDoc, doc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import Chart from 'chart.js/auto';
 
-export default function Home() {
+export default function InventoryDashboard() {
   const [inventory, setInventory] = useState([]);
   const [open, setOpen] = useState(false);
+  const [currentItemId, setCurrentItemId] = useState(null);
   const [itemName, setItemName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-
-  const updateInventory = async () => {
-    setLoading(true);
-    try {
-      const snapshot = query(collection(firestore, 'inventory'));
-      const docs = await getDocs(snapshot);
-      const inventoryList = [];
-      docs.forEach((doc) => {
-        inventoryList.push({
-          name: doc.id,
-          ...doc.data(),
-        });
-      });
-      setInventory(inventoryList);
-    } catch (err) {
-      setError('Failed to update inventory. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const addItem = async (item) => {
-    try {
-      const docRef = doc(collection(firestore, 'inventory'), item);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const { quantity } = docSnap.data();
-        await setDoc(docRef, { quantity: quantity + 1 });
-      } else {
-        await setDoc(docRef, { quantity: 1 });
-      }
-
-      await updateInventory();
-      setSnackbarOpen(true);
-    } catch (err) {
-      setError('Failed to add item. Please try again later.');
-    }
-  };
-
-  const removeItem = async (item) => {
-    try {
-      const docRef = doc(collection(firestore, 'inventory'), item);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const { quantity } = docSnap.data();
-        if (quantity === 1) {
-          await deleteDoc(docRef);
-        } else {
-          await setDoc(docRef, { quantity: quantity - 1 });
-        }
-      }
-
-      await updateInventory();
-      setSnackbarOpen(true);
-    } catch (err) {
-      setError('Failed to remove item. Please try again later.');
-    }
-  };
+  const [itemCategory, setItemCategory] = useState('');
+  const [itemQuantity, setItemQuantity] = useState(1);
+  const [itemImage, setItemImage] = useState(null);
 
   useEffect(() => {
-    updateInventory();
+    const fetchInventory = async () => {
+      const snapshot = await getDocs(collection(firestore, 'inventory'));
+      const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setInventory(items);
+    };
+
+    fetchInventory();
   }, []);
 
-  const handleOpen = () => setOpen(true);
+  const handleOpen = () => {
+    setCurrentItemId(null);
+    setItemName('');
+    setItemCategory('');
+    setItemQuantity(1);
+    setItemImage(null);
+    setOpen(true);
+  };
+
   const handleClose = () => setOpen(false);
-  const handleSnackbarClose = () => setSnackbarOpen(false);
+
+  const handleSaveItem = async () => {
+    if (!itemName.trim()) return;
+
+    const itemData = {
+      name: itemName,
+      category: itemCategory,
+      quantity: itemQuantity,
+      image: itemImage,
+    };
+
+    try {
+      if (currentItemId) {
+        const itemRef = doc(firestore, 'inventory', currentItemId);
+        await updateDoc(itemRef, itemData);
+      } else {
+        const newItemRef = doc(collection(firestore, 'inventory'));
+        await setDoc(newItemRef, itemData);
+      }
+
+      const snapshot = await getDocs(collection(firestore, 'inventory'));
+      const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setInventory(items);
+
+      handleClose();
+    } catch (error) {
+      console.error('Error saving item:', error);
+    }
+  };
+
+  const handleDelete = async (item) => {
+    try {
+      await deleteDoc(doc(firestore, 'inventory', item.id));
+
+      const snapshot = await getDocs(collection(firestore, 'inventory'));
+      const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setInventory(items);
+    } catch (error) {
+      console.error('Error deleting item:', error);
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setItemImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const pieChartData = {
+    labels: [...new Set(inventory.map(item => item.category))],
+    datasets: [{
+      data: inventory.reduce((acc, item) => {
+        const categoryIndex = acc.labels.indexOf(item.category);
+        if (categoryIndex >= 0) {
+          acc.data[categoryIndex] += item.quantity;
+        } else {
+          acc.labels.push(item.category);
+          acc.data.push(item.quantity);
+        }
+        return acc;
+      }, { labels: [], data: [] }).data,
+      backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'],
+    }]
+  };
+
+  const barChartData = {
+    labels: inventory.map(item => item.name),
+    datasets: [{
+      label: 'Quantity',
+      data: inventory.map(item => item.quantity),
+      backgroundColor: '#36A2EB',
+    }]
+  };
+
+  const columns = [
+    { field: 'name', headerName: 'Item Name', width: 150 },
+    { field: 'category', headerName: 'Category', width: 130 },
+    { field: 'quantity', headerName: 'Quantity', width: 100 },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 150,
+      renderCell: (params) => (
+        <Stack direction="row" spacing={1}>
+          <IconButton color="primary" onClick={() => {
+            setCurrentItemId(params.row.id);
+            setItemName(params.row.name);
+            setItemCategory(params.row.category);
+            setItemQuantity(params.row.quantity);
+            setItemImage(params.row.image);
+            setOpen(true);
+          }}>
+            <EditIcon />
+          </IconButton>
+          <IconButton color="error" onClick={() => handleDelete(params.row)}>
+            <DeleteIcon />
+          </IconButton>
+        </Stack>
+      ),
+    },
+  ];
 
   return (
-    <Box
-      width="100vw"
-      height="100vh"
-      display="flex"
-      flexDirection="column"
-      justifyContent="center"
-      alignItems="center"
-      gap={2}
-      bgcolor="white"
-      p={4}
-    >
+    <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', minHeight: '100vh' }}>
+      <Grid container direction="column" alignItems="center" spacing={3} sx={{ maxWidth: '1200px', width: '100%' }}>
+        <Grid item xs={12}>
+          <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 2, boxShadow: 1, width: '100%' }}>
+            <Typography variant="h6" gutterBottom>Inventory List</Typography>
+            <DataGrid
+              rows={inventory}
+              columns={columns}
+              pageSize={5}
+              rowsPerPageOptions={[5]}
+              disableSelectionOnClick
+              autoHeight
+            />
+          </Box>
+        </Grid>
+        <Grid item xs={12}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 2, boxShadow: 1, height: 400 }}>
+                <Typography variant="h6" gutterBottom>Inventory Categories</Typography>
+                <Pie data={pieChartData} options={{ maintainAspectRatio: false }} height={350} />
+              </Box>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 2, boxShadow: 1, height: 400 }}>
+                <Typography variant="h6" gutterBottom>Item Quantities</Typography>
+                <Bar data={barChartData} options={{ maintainAspectRatio: false }} height={350} />
+              </Box>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Grid>
+
+      <Button variant="contained" startIcon={<AddIcon />} sx={{ mt: 3 }} onClick={handleOpen}>
+        Add New Item
+      </Button>
+
       <Modal open={open} onClose={handleClose}>
-        <Box
-          position="absolute"
-          top="50%"
-          left="50%"
-          sx={{ transform: 'translate(-50%, -50%)' }}
-          width={400}
-          bgcolor="white"
-          border="2px solid #3e629c"
-          boxShadow={24}
-          p={4}
-          display="flex"
-          flexDirection="column"
-          gap={3}
-        >
-          <Typography variant="h6" color="#333">
-            Add Item
+        <Box sx={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: 400, bgcolor: 'white', borderRadius: 2, boxShadow: 24, p: 4
+        }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            {currentItemId ? 'Edit Item' : 'Add New Item'}
           </Typography>
-          <Stack width="100%" direction="row" spacing={2}>
+          <Stack spacing={2}>
             <TextField
+              label="Item Name"
               variant="outlined"
-              fullWidth
               value={itemName}
               onChange={(e) => setItemName(e.target.value)}
+              fullWidth
             />
-            <Button
+            <TextField
+              label="Category"
               variant="outlined"
-              onClick={() => {
-                addItem(itemName);
-                setItemName('');
-                handleClose();
-              }}
-            >
-              ADD
+              value={itemCategory}
+              onChange={(e) => setItemCategory(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Quantity"
+              variant="outlined"
+              type="number"
+              value={itemQuantity}
+              onChange={(e) => setItemQuantity(parseInt(e.target.value))}
+              fullWidth
+            />
+            <Button variant="contained" component="label">
+              Upload Image
+              <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+            </Button>
+            {itemImage && <Avatar src={itemImage} alt="Item Preview" sx={{ width: 96, height: 96 }} />}
+            <Button variant="contained" onClick={handleSaveItem}>
+              {currentItemId ? 'Update' : 'Save'}
             </Button>
           </Stack>
         </Box>
       </Modal>
-      <Button variant="contained" onClick={handleOpen}>
-        Add New Item
-      </Button>
-      <Box border="1px solid #333" width="800px" p={2}>
-        <Box
-          width="100%"
-          height="100px"
-          bgcolor="#ADD8E6"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          mb={2}
-        >
-          <Typography variant="h2" color="#333">
-            Inventory
-          </Typography>
-        </Box>
-        {loading ? (
-          <Box display="flex" justifyContent="center" alignItems="center" height="300px">
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Stack width="100%" height="300px" spacing={2} overflow="auto">
-            {inventory.map(({ name, quantity }) => (
-              <Box
-                key={name}
-                width="100%"
-                minHeight="150px"
-                display="flex"
-                alignItems="center"
-                justifyContent="space-between"
-                bgcolor="#f0f0f0"
-                padding={2}
-                borderRadius={1}
-                boxShadow={2}
-              >
-                <Typography variant="h4" color="#333" textAlign="center">
-                  {name.charAt(0).toUpperCase() + name.slice(1)}
-                </Typography>
-                <Typography variant="h4" color="#333" textAlign="center">
-                  {quantity}
-                </Typography>
-                <Stack direction="row" spacing={2}>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      addItem(name);
-                    }}
-                  >
-                    Add
-                  </Button>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      removeItem(name);
-                    }}
-                  >
-                    Remove
-                  </Button>
-                </Stack>
-              </Box>
-            ))}
-          </Stack>
-        )}
-      </Box>
-      {error && (
-        <Snackbar
-          open={!!error}
-          autoHideDuration={6000}
-          onClose={() => setError('')}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        >
-          <Alert onClose={() => setError('')} severity="error">
-            {error}
-          </Alert>
-        </Snackbar>
-      )}
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={3000}
-        onClose={handleSnackbarClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={handleSnackbarClose} severity="success">
-          Operation successful!
-        </Alert>
-      </Snackbar>
     </Box>
   );
 }
