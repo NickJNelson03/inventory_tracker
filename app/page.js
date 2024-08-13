@@ -1,11 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Box, Button, Grid, Modal, Stack, TextField, Typography, IconButton, Avatar } from '@mui/material';
+import { Box, Button, Grid, Modal, Stack, TextField, Typography, IconButton } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { DataGrid } from '@mui/x-data-grid';
-import { Pie, Bar } from 'react-chartjs-2';
+import { Pie } from 'react-chartjs-2';
 import { firestore } from '@/firebase';
 import { collection, getDocs, setDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import Chart from 'chart.js/auto';
@@ -17,7 +17,6 @@ export default function InventoryDashboard() {
   const [itemName, setItemName] = useState('');
   const [itemCategory, setItemCategory] = useState('');
   const [itemQuantity, setItemQuantity] = useState(1);
-  const [itemImage, setItemImage] = useState(null);
 
   useEffect(() => {
     const fetchInventory = async () => {
@@ -34,7 +33,6 @@ export default function InventoryDashboard() {
     setItemName('');
     setItemCategory('');
     setItemQuantity(1);
-    setItemImage(null);
     setOpen(true);
   };
 
@@ -43,11 +41,12 @@ export default function InventoryDashboard() {
   const handleSaveItem = async () => {
     if (!itemName.trim()) return;
 
+    const category = itemCategory.trim() === '' ? 'Uncategorized' : itemCategory;
+
     const itemData = {
       name: itemName,
-      category: itemCategory,
+      category: category,
       quantity: itemQuantity,
-      image: itemImage,
     };
 
     try {
@@ -81,17 +80,6 @@ export default function InventoryDashboard() {
     }
   };
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setItemImage(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const pieChartData = {
     labels: [...new Set(inventory.map(item => item.category))],
     datasets: [{
@@ -106,15 +94,6 @@ export default function InventoryDashboard() {
         return acc;
       }, { labels: [], data: [] }).data,
       backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'],
-    }]
-  };
-
-  const barChartData = {
-    labels: inventory.map(item => item.name),
-    datasets: [{
-      label: 'Quantity',
-      data: inventory.map(item => item.quantity),
-      backgroundColor: '#36A2EB',
     }]
   };
 
@@ -133,7 +112,6 @@ export default function InventoryDashboard() {
             setItemName(params.row.name);
             setItemCategory(params.row.category);
             setItemQuantity(params.row.quantity);
-            setItemImage(params.row.image);
             setOpen(true);
           }}>
             <EditIcon />
@@ -147,36 +125,32 @@ export default function InventoryDashboard() {
   ];
 
   return (
-    <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', minHeight: '100vh' }}>
-      <Grid container direction="column" alignItems="center" spacing={3} sx={{ maxWidth: '1200px', width: '100%' }}>
-        <Grid item xs={12}>
-          <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 2, boxShadow: 1, width: '100%' }}>
-            <Typography variant="h6" gutterBottom>Inventory List</Typography>
-            <DataGrid
-              rows={inventory}
-              columns={columns}
-              pageSize={5}
-              rowsPerPageOptions={[5]}
-              disableSelectionOnClick
-              autoHeight
-            />
+    <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', minHeight: '95vh' }}>
+      <Typography variant="h3" sx={{ mb: 4, fontWeight: 'bold', textAlign: 'center' }}>
+        Pantry Pal
+      </Typography>
+      <Grid container spacing={3} sx={{ maxWidth: '1200px', width: '100%' }}>
+        <Grid item xs={12} sm={6}>
+          <Box sx={{ bgcolor: 'white', p: 7, borderRadius: 2, boxShadow: 1, height: 500 }}>
+            <Typography fontSize={18} color="#333">Inventory Categories</Typography>
+            <Pie data={pieChartData} options={{ maintainAspectRatio: false }} height={400} />
           </Box>
         </Grid>
-        <Grid item xs={12}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
-              <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 2, boxShadow: 1, height: 400 }}>
-                <Typography variant="h6" gutterBottom>Inventory Categories</Typography>
-                <Pie data={pieChartData} options={{ maintainAspectRatio: false }} height={350} />
-              </Box>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 2, boxShadow: 1, height: 400 }}>
-                <Typography variant="h6" gutterBottom>Item Quantities</Typography>
-                <Bar data={barChartData} options={{ maintainAspectRatio: false }} height={350} />
-              </Box>
-            </Grid>
-          </Grid>
+        <Grid item xs={12} sm={6}>
+          <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 2, boxShadow: 1, height: 500, overflow: 'hidden' }}>
+            <Typography variant="h6" color="#333" gutterBottom sx={{ mt: 0, mb: 1 }}>
+              Inventory List
+            </Typography>
+            <Box sx={{ height: '95%', overflowY: 'scroll' }}>
+              <DataGrid
+                rows={inventory}
+                columns={columns}
+                pageSize={5}
+                rowsPerPageOptions={[5]}
+                disableSelectionOnClick
+              />
+            </Box>
+          </Box>
         </Grid>
       </Grid>
 
@@ -215,11 +189,6 @@ export default function InventoryDashboard() {
               onChange={(e) => setItemQuantity(parseInt(e.target.value))}
               fullWidth
             />
-            <Button variant="contained" component="label">
-              Upload Image
-              <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
-            </Button>
-            {itemImage && <Avatar src={itemImage} alt="Item Preview" sx={{ width: 96, height: 96 }} />}
             <Button variant="contained" onClick={handleSaveItem}>
               {currentItemId ? 'Update' : 'Save'}
             </Button>
